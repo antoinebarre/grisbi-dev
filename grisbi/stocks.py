@@ -1,9 +1,11 @@
-# utilitaires
+# utilits
 import pandas as pd
 import numpy as np
 import os
 import pandas_datareader.data as web
 from grisbi import parameter
+import yfinance as yf
+
 
 
 def save_value(ticker:str,dataFolder:str = parameter.defaultFolder ) -> pd.core.frame.DataFrame:
@@ -17,7 +19,7 @@ def save_value(ticker:str,dataFolder:str = parameter.defaultFolder ) -> pd.core.
         pd.core.frame.DataFrame: dataFrame with the stock evolution
     """
 
-    print(">> Enregistrment pour le ticker: " + ticker)
+    print(">> Download for the ticker: " + ticker)
     # lecture dans Yahoo Finance
     try:
         df = web.DataReader(ticker,'yahoo') 
@@ -48,7 +50,7 @@ def get_values_from_csv(ticker:str,dataFolder:str = parameter.defaultFolder ) ->
         pd.core.frame.DataFrame: read data frame. Empty if there is an error.
     """
     
-    print(">> Lecture pour le ticker: " + ticker)
+    print(">> read csv for ticker: " + ticker)
 
     #create an absolute path
     dataFile = os.path.abspath(os.path.join(dataFolder,ticker+".csv"))
@@ -65,4 +67,117 @@ def get_values_from_csv(ticker:str,dataFolder:str = parameter.defaultFolder ) ->
         return pd.DataFrame()
     else:
         return df
+
+def get_stockName(ticker:str)->str:
+    """get the name of stock associated to the ticker
+
+    Args:
+        ticker (str): ticker of the stock
+
+    Returns:
+        str: long name of the stock associated to the ticker
+    """
+    
+    # Use yahoo finance API to collect the stock name
+    stock = yf.Ticker(ticker)
+    return stock.info['longName']
+
+def test():
+    import plotly.graph_objects as go
+    import numpy as np
+
+
+
+    x = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    x_rev = x[::-1]
+
+    # Line 1
+    y1 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    y1_upper = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+    y1_lower = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    y1_lower = y1_lower[::-1]
+
+    # Line 2
+    y2 = [5, 2.5, 5, 7.5, 5, 2.5, 7.5, 4.5, 5.5, 5]
+    y2_upper = [5.5, 3, 5.5, 8, 6, 3, 8, 5, 6, 5.5]
+    y2_lower = [4.5, 2, 4.4, 7, 4, 2, 7, 4, 5, 4.75]
+    y2_lower = y2_lower[::-1]
+
+    # Line 3
+    y3 = [10, 8, 6, 4, 2, 0, 2, 4, 2, 0]
+    y3_upper = [11, 9, 7, 5, 3, 1, 3, 5, 3, 1]
+    y3_lower = [9, 7, 5, 3, 1, -.5, 1, 3, 1, -1]
+    y3_lower = y3_lower[::-1]
+
+
+    fig = go.Figure()
+
+    fig.add_trace(go.Scatter(
+        x=x+x_rev,
+        y=y1_upper+y1_lower,
+        fill='toself',
+        fillcolor='rgba(0,100,80,0.2)',
+        line_color='rgba(255,255,255,0)',
+        showlegend=False,
+        name='Fair',
+    ))
+    fig.add_trace(go.Scatter(
+        x=x+x_rev,
+        y=y2_upper+y2_lower,
+        fill='toself',
+        fillcolor='rgba(0,176,246,0.2)',
+        line_color='rgba(255,255,255,0)',
+        name='Premium',
+        showlegend=False,
+    ))
+    fig.add_trace(go.Scatter(
+        x=x+x_rev,
+        y=y3_upper+y3_lower,
+        fill='toself',
+        fillcolor='rgba(231,107,243,0.2)',
+        line_color='rgba(255,255,255,0)',
+        showlegend=False,
+        name='Ideal',
+    ))
+    fig.add_trace(go.Scatter(
+        x=x, y=y1,
+        line_color='rgb(0,100,80)',
+        name='Fair',
+    ))
+    fig.add_trace(go.Scatter(
+        x=x, y=y2,
+        line_color='rgb(0,176,246)',
+        name='Premium',
+    ))
+    fig.add_trace(go.Scatter(
+        x=x, y=y3,
+        line_color='rgb(231,107,243)',
+        name='Ideal',
+    ))
+
+    fig.update_traces(mode='lines')   
+    fig.show()
+
+    import plotly.graph_objects as go
+    from datetime import datetime
+
+    open_data = [33.0, 33.3, 33.5, 33.0, 34.1]
+    high_data = [33.1, 33.3, 33.6, 33.2, 34.8]
+    low_data = [32.7, 32.7, 32.8, 32.6, 32.8]
+    close_data = [33.0, 32.9, 33.3, 33.1, 33.1]
+    dates = [datetime(year=2013, month=10, day=10),
+            datetime(year=2013, month=11, day=10),
+            datetime(year=2013, month=12, day=10),
+            datetime(year=2014, month=1, day=10),
+            datetime(year=2014, month=2, day=10)]
+
+    fig = go.Figure(data=[go.Candlestick(x=dates,
+                        open=open_data, high=high_data,
+                        low=low_data, close=close_data)])
+
+    fig.show()
+
+
+
+    return fig
 
