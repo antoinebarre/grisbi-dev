@@ -7,6 +7,11 @@ import os
 import pandas_datareader.data as web
 import yfinance as yf
 import datetime as dt
+import matplotlib.pyplot as plt
+import matplotlib as mpl
+
+# fond blanc pour les figures
+mpl.rcParams['figure.facecolor'] = 'white'
 
 # CONSTANTES
 # - Dates :
@@ -21,8 +26,12 @@ defaultDataFolder       = os.path.join(os.getcwd(),"data")
 defaultListFolder       = os.path.join(os.getcwd(),"list")
 
 
+# - Elements graphique
+defaultFigSize = (16,12)
+
+
 ###################################################################################
-# FUNCTIONS D4IMPORT EXPORT
+# FUNCTIONS D'IMPORT EXPORT
 def get_data_from_Yahoo(ticker:str,
                     dataFolder:str = defaultDataFolder,
                     period:str=referencePeriod,interval:str = referenceInterval):
@@ -38,11 +47,11 @@ def get_data_from_Yahoo(ticker:str,
         Exception: _description_
     """
     try:
-        stock   = yf.Ticker(ticker)
-        data    = stock.history(period=period, interval=interval)
+        #stock   = yf.Ticker(ticker)
+        data    = yf.download(ticker,period=period, interval=interval)
 
         #suppression des mauvaises colonnes
-        data.drop(["Dividends","Stock Splits"], axis=1, inplace=True)
+        #data.drop(["Dividends","Stock Splits"], axis=1, inplace=True)
 
         if data.empty:
             raise Exception
@@ -135,16 +144,16 @@ def get_stockName(ticker:str,
         str: nom de l'action
     """
     
-    # cas 1 : le ticker est présent dans les listes de tickers
-
     try:
+        # cas 1 : le ticker est présent dans les listes de tickers
         listStocks = read_listStocks(listFolder= listFolder)  
         name = listStocks.loc[listStocks['symbol']==ticker,"longName"].item()
 
         return name
     except:
         print(f"WARNING - ticker absent des listes :{ticker}")
-
+        # cas 2 : le ticker est dans Yahoo Finance
+        
         stock = yf.Ticker(ticker)
    
         try :
@@ -153,71 +162,155 @@ def get_stockName(ticker:str,
             print(f"WARNING - ticker absent de Yahoo Finance :{ticker}")
             return ''
 
-class stock:
-    "objet stock permet de collecter et manipuler les données associées à un ticker de Yahoo FInance"
+#######################################################################################
+# fonctions de tracage
 
-    # Property
-    data        = None
-    name        = None
-    currency    = None
-    ticker      = None
-    period      = referencePeriod
-    interval    = referenceInterval    
-    data        = None
-    __isValid   = False
-    __isData    = False
+def plot_stock(df,title:str="",currency:str=""):
+    
+    
+    #create figure
+    fig=plt.figure(figsize=defaultFigSize)
 
-###################################################################################
-    # CONSTRUCTOR
-    def __init__(self,ticker:str,listFolder:str = defaultListFolder):
-        self.ticker     = ticker
-
-        # collecter les données
-        self.data       = load_data_from_csv(ticker)
-
-        if self.data.empty:
-            print(f"WARNING - ticker invalide :{ticker}")
-            return
-        else:
-            self.__isValid=True
-
-            #chercher le nom
-            try:
-                listStocks = read_listStocks(listFolder= listFolder)  
-                self.name = listStocks.loc[listStocks['symbol']==ticker,"longName"].item()
-            except:
-                print(f"WARNING - ticker absent des listes :{ticker}")
-                return
-        return
-            
-        
-        
-
-###################################################################################
-    # METHODE SURCHARGEES    
-
-    def __str__(self)-> str:
-        """Surcharge de la methode print
-
-        Returns:
-            str: message a afficher
-        """
-
-        str4stock = "STOCK INFORMATION :\n"\
-                    f" - Ticker   : {self.ticker}\n"\
-                    f" - Nom      : {self.name}\n"\
-                    f" - Currency : {self.currency}\n"\
-                    f" - Valid    : {self.__isValid}\n"\
-                    f" - Period   : {self.period}\n"\
-                    f" - Frequency: {self.interval}\n"
-        return str4stock
-
-###################################################################################
-    # METHODES
+    plt.title(title)
+    plt.xlabel('Date')
+    plt.ylabel(f"Prix Cloture {currency}")
     
 
+    df['Adj Close'].plot(label = "Close")
+    plt.fill_between(df.index,df['High'],df['Low'],alpha=0.2,label='min max par jour')
+
+    plt.grid(True)
+    
+    plt.legend()
+    plt.show()
+
+    return
+    
+
+def plot_candlestick(df,title:str="",ticker:str="",currency:str=""):
+
+    import cufflinks as cf
+    import plotly.express as px
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+
+    from plotly.offline import download_plotlyjs, init_notebook_mode, plot, iplot
+    init_notebook_mode(connected=True)
+    # Use Plotly locally
+    cf.go_offline()
+
+    if not df.empty:
+              
+
+        df['MA5'] = df['Close'].rolling(5).mean()
+        df['MA20'] = df['Close'].rolling(20).mean()
+
+        # Create candlestick plot
+        candles = go.Candlestick(x=df.index, 
+                                    open=df['Open'], 
+                                    high=df['High'],
+                                    low=df['Low'], 
+                                    close=df['Close'], 
+                                    name=ticker)
+
+        
+        # Create volume bar chart
+        vol = go.Bar(x=df.index, y=df['Volume'], name="Volume",
+                    marker=dict(
+                        color='blue',
+                        line=dict(color='blue', width=3)
+                        )
+                    )
+
+        # Create figure with secondary y-axis
+        fig = make_subplots(rows=2, cols=1, row_heights = [0.7,0.3])
+
+        # Add plots
+        fig.add_trace(trace=candles, row=1, col=1)
+        fig.add_trace(trace=vol, row=2, col=1)
 
 
+        fig.update_layout(
+            xaxis=dict(
+                rangeslider=dict(
+                    visible=False
+                ),
+                type="date"),
+            title_text=title    
+        )
+        fig.update_xaxes(title_text="Date", row=1, col=1)
+        fig.update_xaxes(title_text="Date", row=2, col=1)
+
+        fig.update_yaxes(title_text=f"Value ({currency})", row=1, col=1)
+        fig.update_yaxes(title_text="Volume", row=2, col=1)
+
+        fig.update_layout(showlegend=False)
+        fig.show()
 
 
+def plot_ichimoku(df1):
+
+    df = df1.copy()
+
+    # Conversion
+    hi_val = df['High'].rolling(window=9).max()
+    low_val = df['Low'].rolling(window=9).min()
+    df['Conversion'] = (hi_val + low_val) / 2
+    
+    # Baseline
+    hi_val2 = df['High'].rolling(window=26).max()
+    low_val2 = df['Low'].rolling(window=26).min()
+    df['Baseline'] = (hi_val2 + low_val2) / 2
+    
+    # Spans
+    df['SpanA'] = ((df['Conversion'] + df['Baseline']) / 2).shift(26)
+    hi_val3 = df['High'].rolling(window=52).max()
+    low_val3 = df['Low'].rolling(window=52).min()
+    df['SpanB'] = ((hi_val3 + low_val3) / 2).shift(26)
+    df['Lagging'] = df['Close'].shift(-26)
+
+
+    plt.figure(figsize=defaultFigSize)
+
+    df['Adj Close'].plot(label = "Adj Close")
+
+    plt.fill_between(df.index,df['SpanA'],df['SpanB'],
+        where = df["SpanA"] >= df['SpanB'], color = 'lightgreen')
+    plt.fill_between(df.index,df["SpanA"],df["SpanB"],
+        where = df['SpanA'] < df["SpanB"], color = 'lightcoral')
+    
+    plt.show()
+
+
+    # high_9 = df['High'].rolling(window= 9).max()
+    # low_9 =  df['Low'].rolling(window= 9).min()
+    # df['conversion_line'] = (high_9 + low_9) /2
+
+    # high_26 = df['High'].rolling(window= 26).max()
+    # low_26 = df['Low'].rolling(window= 26).min()
+    # df['base_line'] = (high_26 + low_26) / 2
+
+    # df['leading_span_A'] = ((df["conversion_line"] + df["base_line"]) / 2).shift(30)
+
+    # high_52 = df['High'].rolling(window= 52).max()
+    # low_52 = df['Low'].rolling(window= 52).min()
+    # df['leading_span_B'] = ((high_52 + low_52) / 2).shift(30)
+
+    # hi_val3 = df['High'].rolling(window=52).max()
+    # low_val3 = df['Low'].rolling(window=52).min()
+    # df['leading_span_B'] = ((hi_val3 + low_val3) / 2).shift(26)
+
+
+    # df['lagging_span'] = df['Close'].shift(-26)
+
+    # fig,ax = plt.subplots(1,1,sharex=True,figsize = (20,9)) #share x axis and set a figure size
+    # ax.plot(df.index, df["Close"],linewidth=4) # plot Close with index on x-axis with a line thickness of 4
+
+
+    # use the fill_between call of ax object to specify where to fill the chosen color
+    # pay attention to the conditions specified in the fill_between call
+    # ax.fill_between(df.index,df['leading_span_A'],df.leading_span_B,
+    #     where = df["leading_span_A"] >= df['leading_span_B'], color = 'lightgreen')
+    # ax.fill_between(df.index,df["leading_span_A"],df["leading_span_B"],
+    #     where = df['leading_span_A'] < df["leading_span_B"], color = 'lightcoral')
 
