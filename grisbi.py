@@ -29,6 +29,19 @@ defaultListFolder       = os.path.join(os.getcwd(),"list")
 # - Elements graphique
 defaultFigSize = (16,12)
 
+# classe d'ordre
+from enum import IntEnum
+
+class ordre(IntEnum):
+    VENTE = -1
+    NEUTRE = 0
+    ACHAT = 1
+
+class status(IntEnum):
+    FREE = 0   
+    HOLD = 1
+
+
 
 ###################################################################################
 # FUNCTIONS D'IMPORT EXPORT
@@ -167,7 +180,6 @@ def get_stockName(ticker:str,
 
 def plot_stock(df,title:str="",currency:str=""):
     
-    
     #create figure
     fig=plt.figure(figsize=defaultFigSize)
 
@@ -279,38 +291,104 @@ def plot_ichimoku(df1):
     plt.fill_between(df.index,df["SpanA"],df["SpanB"],
         where = df['SpanA'] < df["SpanB"], color = 'lightcoral')
     
+    plt.grid(True)
     plt.show()
 
+    #############################################################################
+    # STRATEGIES DE LA TORTUE
 
-    # high_9 = df['High'].rolling(window= 9).max()
-    # low_9 =  df['Low'].rolling(window= 9).min()
-    # df['conversion_line'] = (high_9 + low_9) /2
+def strategie_tortue(df_init, jour:int=28):
 
-    # high_26 = df['High'].rolling(window= 26).max()
-    # low_26 = df['Low'].rolling(window= 26).min()
-    # df['base_line'] = (high_26 + low_26) / 2
+    df = df_init.copy()
 
-    # df['leading_span_A'] = ((df["conversion_line"] + df["base_line"]) / 2).shift(30)
+    # calcul des valeurs de conditions
+    df["min"] = df["Close"].shift(1).rolling(window = jour).min()
+    df["max"] = df["Close"].shift(1).rolling(window = jour).max()
 
-    # high_52 = df['High'].rolling(window= 52).max()
-    # low_52 = df['Low'].rolling(window= 52).min()
-    # df['leading_span_B'] = ((high_52 + low_52) / 2).shift(30)
+    # parametre de la strategie
+    conditions = [df["max"]<df["Close"], # achat
+                        df["min"]>df["Close"]] # vente
+        
+    choices = [ordre.ACHAT,ordre.VENTE]
 
-    # hi_val3 = df['High'].rolling(window=52).max()
-    # low_val3 = df['Low'].rolling(window=52).min()
-    # df['leading_span_B'] = ((hi_val3 + low_val3) / 2).shift(26)
+    # application de la strategie
+    df["recommandation"]= np.select(conditions, choices, default=ordre.NEUTRE)
+
+    return df
+
+#####################################################################################
+# MODULE DE BACK TEST
+
+def backtest(df_init):
+
+    df = df_init.copy()
+    currentStatus = status.FREE
+
+    action =[]
+    prixAchat = []
+    prixVente = []
 
 
-    # df['lagging_span'] = df['Close'].shift(-26)
+    dt = None
+    dt = pd.DataFrame(columns = ['Date','position', 'Prix'])
 
-    # fig,ax = plt.subplots(1,1,sharex=True,figsize = (20,9)) #share x axis and set a figure size
-    # ax.plot(df.index, df["Close"],linewidth=4) # plot Close with index on x-axis with a line thickness of 4
+# complete df avec les recommandations
+    df = strategie_tortue(df)
+
+    for idx in df.index:
+
+        #Traitement signal en ACHAT
+        if df.loc[idx,"recommandation"]==ordre.ACHAT and currentStatus==status.FREE:
+            action.append(ordre.ACHAT)
+            currentStatus = status.HOLD
+
+            #prixVente.append(np.nan)
+            myrow = {'Date': idx,'position': "ACHAT",'Prix': df.loc[idx,"Close"]}
+            dt = dt.append(myrow,ignore_index=True)
+
+            #mise a jour du status
+            currentStatus = status.HOLD
+        elif df.loc[idx,"recommandation"]==ordre.VENTE and currentStatus==status.HOLD:
+            action.append(ordre.VENTE)
+            currentStatus = status.FREE
+
+            myrow = {'Date': idx,'position': "VENTE",'Prix': df.loc[idx,"Close"]}
+            dt = dt.append(myrow,ignore_index=True)
 
 
-    # use the fill_between call of ax object to specify where to fill the chosen color
-    # pay attention to the conditions specified in the fill_between call
-    # ax.fill_between(df.index,df['leading_span_A'],df.leading_span_B,
-    #     where = df["leading_span_A"] >= df['leading_span_B'], color = 'lightgreen')
-    # ax.fill_between(df.index,df["leading_span_A"],df["leading_span_B"],
-    #     where = df['leading_span_A'] < df["leading_span_B"], color = 'lightcoral')
+        else:
+            action.append(ordre.NEUTRE)
+            prixAchat.append(np.nan)
+            prixVente.append(np.nan)
+    
+    df["position"] = action
 
+    # creation d'une time series sur dy
+    dt = dt.set_index('Date')
+    dt = dt.set_index(pd.to_datetime(dt.index))
+
+
+    # tracée de la stratégie
+    fig, ax = plt.subplots(2,figsize=(12,8),sharex=True)
+
+  
+    ax[0].plot(df["Close"], label="Prix Cloture")
+    
+    ax[0].plot(dt[dt["position"]=="ACHAT"]["Prix"], 
+                marker = '^', markersize = 10, color = 'green', label = 'ACHAT',linestyle = 'None')
+    ax[0].plot(dt[dt["position"]=="VENTE"]["Prix"], 
+                marker = 'v', markersize = 10, color = 'red', label = 'VENTE',linestyle = 'None')
+       
+    leg = ax[0].legend(loc="upper left", bbox_to_anchor=[0, 1],
+                    ncol=1, shadow=True, title="Legend", fancybox=True)
+    leg.get_title().set_color("black")
+
+    ax[1].plot(df["position"],label ="position")
+    ax[1].set_yticks([-1, 0, 1])
+    ax[1].set_yticklabels([ "VENTE","NEUTRE","ACHAT"])
+
+
+    plt.legend()
+    plt.show()
+
+    return dt
