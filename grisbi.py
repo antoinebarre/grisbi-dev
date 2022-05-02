@@ -321,12 +321,17 @@ def strategie_tortue(df_init, jour:int=28):
 
 def backtest(df_init):
 
+    import math
+
     df = df_init.copy()
     currentStatus = status.FREE
 
     action =[]
-    prixAchat = []
-    prixVente = []
+
+    wallet = 100000
+    #buy and hold
+    nb0 = math.floor(wallet/df["Close"].iloc[0])
+    reste = wallet - nb0*df["Close"].iloc[0]
 
 
     dt = None
@@ -335,7 +340,12 @@ def backtest(df_init):
 # complete df avec les recommandations
     df = strategie_tortue(df)
 
+    currentWallet = wallet
+    nbAction = 0
+
+
     for idx in df.index:
+        df.loc[idx,"amount0"] = reste+nb0*df.loc[idx,"Close"]
 
         #Traitement signal en ACHAT
         if df.loc[idx,"recommandation"]==ordre.ACHAT and currentStatus==status.FREE:
@@ -343,14 +353,24 @@ def backtest(df_init):
             currentStatus = status.HOLD
 
             #prixVente.append(np.nan)
+            nbAction = math.floor(currentWallet/df.loc[idx,"Close"])
+            currentWallet = currentWallet - nbAction* df.loc[idx,"Close"]
+
             myrow = {'Date': idx,'position': "ACHAT",'Prix': df.loc[idx,"Close"]}
+
             dt = dt.append(myrow,ignore_index=True)
 
             #mise a jour du status
             currentStatus = status.HOLD
+
+        #Traitement signal en VENTE    
         elif df.loc[idx,"recommandation"]==ordre.VENTE and currentStatus==status.HOLD:
             action.append(ordre.VENTE)
             currentStatus = status.FREE
+
+            currentWallet = currentWallet + nbAction* df.loc[idx,"Close"]
+            nbAction = 0
+            
 
             myrow = {'Date': idx,'position': "VENTE",'Prix': df.loc[idx,"Close"]}
             dt = dt.append(myrow,ignore_index=True)
@@ -358,8 +378,8 @@ def backtest(df_init):
 
         else:
             action.append(ordre.NEUTRE)
-            prixAchat.append(np.nan)
-            prixVente.append(np.nan)
+    
+        df.loc[idx,"fonds"]= nbAction*df.loc[idx,"Close"]+currentWallet
     
     df["position"] = action
 
@@ -379,16 +399,16 @@ def backtest(df_init):
     ax[0].plot(dt[dt["position"]=="VENTE"]["Prix"], 
                 marker = 'v', markersize = 10, color = 'red', label = 'VENTE',linestyle = 'None')
        
-    leg = ax[0].legend(loc="upper left", bbox_to_anchor=[0, 1],
+    leg = ax[0].legend(loc='best', bbox_to_anchor=[0, 1],
                     ncol=1, shadow=True, title="Legend", fancybox=True)
     leg.get_title().set_color("black")
+    ax[0].grid(True)
 
-    ax[1].plot(df["position"],label ="position")
-    ax[1].set_yticks([-1, 0, 1])
-    ax[1].set_yticklabels([ "VENTE","NEUTRE","ACHAT"])
-
-
+    ax[1].plot(df["fonds"]/wallet*100,label ="fonds")
+    ax[1].plot(df["amount0"]/wallet*100,label ="buy and hold")
+    ax[1].grid(True)
     plt.legend()
+    
     plt.show()
 
     return dt
