@@ -326,7 +326,7 @@ def backtest(df_init):
     df = df_init.copy()
     currentStatus = status.FREE
 
-    action =[]
+    action = []
 
     wallet = 100000
     #buy and hold
@@ -389,7 +389,7 @@ def backtest(df_init):
 
 
     # tracée de la stratégie
-    fig, ax = plt.subplots(2,figsize=(12,8),sharex=True)
+    fig, ax = plt.subplots(2,1,figsize=defaultFigSize,sharex=True)
 
   
     ax[0].plot(df["Close"], label="Prix Cloture")
