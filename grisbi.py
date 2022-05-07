@@ -319,12 +319,18 @@ def strategie_tortue(df_init, jour:int=28):
 #####################################################################################
 # MODULE DE BACK TEST
 
-def backtest(df_init):
+def backtest(df_init, strategie, startDate= default_startDate, endDate = default_endDate):
 
     import math
 
     df = df_init.copy()
     currentStatus = status.FREE
+
+    # complete df avec les recommandations
+    df = strategie(df)
+
+    # reduire df au temps
+    df = df[startDate:endDate]
 
     action = []
 
@@ -337,8 +343,8 @@ def backtest(df_init):
     dt = None
     dt = pd.DataFrame(columns = ['Date','position', 'Prix'])
 
-# complete df avec les recommandations
-    df = strategie_tortue(df)
+    
+
 
     currentWallet = wallet
     nbAction = 0
@@ -380,6 +386,7 @@ def backtest(df_init):
             action.append(ordre.NEUTRE)
     
         df.loc[idx,"fonds"]= nbAction*df.loc[idx,"Close"]+currentWallet
+        df.loc[idx,"value"] = np.where(nbAction>0, df.loc[idx,"Close"], np.nan)
     
     df["position"] = action
 
@@ -411,4 +418,4 @@ def backtest(df_init):
     
     plt.show()
 
-    return dt
+    return df
