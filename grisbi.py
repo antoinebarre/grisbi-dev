@@ -1,6 +1,8 @@
 """Module Grisbi de gestion des actions et de leurs analyses"""
 
 #module à utiliser
+from pickle import TRUE
+from symtable import Symbol
 import pandas as pd
 import numpy as np
 import os
@@ -9,6 +11,13 @@ import yfinance as yf
 import datetime as dt
 import matplotlib.pyplot as plt
 import matplotlib as mpl
+
+import cufflinks as cf
+import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+from plotly.offline import download_plotlyjs, init_notebook_mode, plot, iplot
 
 # fond blanc pour les figures
 mpl.rcParams['figure.facecolor'] = 'white'
@@ -178,25 +187,80 @@ def get_stockName(ticker:str,
 #######################################################################################
 # fonctions de tracage
 
-def plot_stock(df,title:str="",currency:str=""):
+def plot_stock(df,title:str="",stockName:str="stock",currency:str="",mode:str="matplotlib"):
     
-    #create figure
-    fig=plt.figure(figsize=defaultFigSize)
+    if mode =="matplotlib":
+        #create figure
+        fig=plt.figure(figsize=defaultFigSize)
 
-    plt.title(title)
-    plt.xlabel('Date')
-    plt.ylabel(f"Prix Cloture {currency}")
-    
+        plt.title(title)
+        plt.xlabel('Date')
+        plt.ylabel(f"Prix Cloture {currency}")
+        
 
-    df['Adj Close'].plot(label = "Close")
-    plt.fill_between(df.index,df['High'],df['Low'],alpha=0.2,label='min max par jour')
+        df['Adj Close'].plot(label = stockName)
+        #plt.fill_between(df.index,df['High'],df['Low'],alpha=0.2,label='min max par jour')
 
-    plt.grid(True)
-    
-    plt.legend()
-    plt.show()
+        plt.grid(True)
+        
+        plt.legend()
+        plt.show()
+        return
+    elif mode=="plotly":
+        init_notebook_mode(connected=True)
+        # Use Plotly locally
+        cf.go_offline()
 
-    return
+        # Create figure with secondary y-axis
+        fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
+            row_heights = [0.8,0.2],x_title ="Date")
+
+        AdjClose = go.Scatter(x=df.index, y=df['Adj Close'],
+                    mode='lines',
+                    line=dict(color='blue',width=2),
+                    name=stockName)
+
+        # Create volume bar chart
+        vol = go.Bar(x=df.index, y=df['Volume'], name="Volume",
+                    marker=dict(
+                        color='blue',
+                        line=dict(color='blue', width=3)
+                        )
+                    )
+        # Add plots
+        fig.add_trace(trace=AdjClose, row=1, col=1)
+        fig.add_trace(trace=vol, row=2, col=1)
+
+        fig.update_layout(
+            xaxis=dict(
+                rangeslider=dict(
+                    visible=False
+                ),
+                type="date"),
+            title_text=title    
+        )
+
+        fig.update_yaxes(title_text=f"Value ({currency})", row=1, col=1)
+        fig.update_yaxes(title_text="Volume", row=2, col=1)
+
+        fig.update_layout(showlegend=False,
+            template="plotly_dark",
+            annotations=[
+                        dict(
+                            text="Source: Yahoo Finance",
+                            showarrow=False,
+                            xref="paper",
+                            yref="paper",
+                            x=0,
+                            y=0)
+                        ]
+            )
+
+
+        fig.show()
+
+
+        return
     
 
 def plot_candlestick(df,title:str="",ticker:str="",currency:str=""):
@@ -297,7 +361,7 @@ def plot_ichimoku(df1):
     #############################################################################
     # STRATEGIES DE LA TORTUE
 
-def strategie_tortue(df_init, jour:int=28):
+def strategie_tortue(df_init, jour:int=28, plot:bool=False, mode:str="matplotlib"):
 
     df = df_init.copy()
 
@@ -313,6 +377,121 @@ def strategie_tortue(df_init, jour:int=28):
 
     # application de la strategie
     df["recommandation"]= np.select(conditions, choices, default=ordre.NEUTRE)
+
+
+    if plot:
+        if mode == "matlplotlib":
+            plt.figure(figsize=defaultFigSize)
+            plt.title(f"Stratégie de la Tortue (nb Jour = {jour})")
+            plt.xlabel('Date')
+            plt.ylabel('Prix Cloture')
+            df["Adj Close"].plot( label="Prix Cloture")
+            df["min"].plot(label = "min")
+            df["max"].plot(label = "max")
+
+            #ajout des recommandations
+            df.loc[df["recommandation"]==ordre.ACHAT,"Adj Close"].plot( 
+                marker = '^', markersize = 10, color = 'green', label = 'ACHAT',linestyle = 'None')
+            df.loc[df["recommandation"]==ordre.VENTE,"Adj Close"].plot( 
+                marker = 'v', markersize = 10, color = 'red', label = 'VENTE',linestyle = 'None')
+
+            plt.legend(loc="upper left", bbox_to_anchor=[0, 1],
+                    ncol=1, shadow=True, title="Legend", fancybox=True)
+            
+            plt.legend()
+            plt.show()
+
+        elif mode=="plotly" :
+            init_notebook_mode(connected=True)
+            # Use Plotly locally
+            cf.go_offline()
+
+            # Create figure with secondary y-axis
+            fig = go.Figure()
+
+            AdjClose = go.Scatter(x=df.index, y=df['Adj Close'],
+                        mode='lines',
+                        line=dict(color='blue',width=2),
+                        name="Adj Close")
+
+            minPlot = go.Scatter(x=df.index, y=df['min'],
+                        mode='lines',
+                        line=dict(color='yellow',width=2),
+                        name= f"min ({jour} jours)")
+            
+            maxPlot = go.Scatter(x=df.index, y=df['max'],
+                        mode='lines',
+                        line=dict(color='orange',width=2),
+                        name= f"max ({jour} jours)")
+
+            #Recommandation Achats
+            
+            df_achat = df.loc[df["recommandation"]==ordre.ACHAT]
+            
+            AchatPlot = go.Scatter(x= df_achat.index, y= df_achat["Adj Close"],
+                            mode='markers',
+                             marker=dict(
+                                        color='green',
+                                        symbol="triangle-up-dot",
+                                        size=10,
+                                        line=dict(
+                                        color='green',
+                                        width=1
+                                            )
+                                        ),
+                            name='ACHATS' )
+            
+            #Recommandations Vente
+            df_vente = df.loc[df["recommandation"]==ordre.VENTE]
+            
+            VentePlot = go.Scatter(x= df_vente.index, y= df_vente["Adj Close"],
+                            mode='markers',
+                             marker=dict(
+                                        color='red',
+                                        symbol="triangle-down-dot",
+                                        size=10,
+                                        line=dict(
+                                        color='red',
+                                        width=1
+                                            )
+                                        ),
+                            name='VENTE' )
+
+            # Add plots
+            fig.add_trace(trace=AdjClose)
+            fig.add_trace(trace=minPlot)
+            fig.add_trace(trace=maxPlot)
+            fig.add_trace(trace=AchatPlot)
+            fig.add_trace(trace=VentePlot)
+            
+
+            fig.update_layout(
+                xaxis=dict(
+                    rangeslider=dict(
+                        visible=False
+                    ),
+                    type="date"),
+                title_text="Analyse de la Tortue"    
+            )
+
+            fig.update_yaxes(title_text=f"Value")
+
+            fig.update_layout(showlegend=True,
+                template="plotly_dark",
+                annotations=[
+                            dict(
+                                text="Source: Yahoo Finance",
+                                showarrow=False,
+                                xref="paper",
+                                yref="paper",
+                                x=0,
+                                y=0)
+                            ]
+                )
+
+
+            fig.show()
+
 
     return df
 
@@ -362,9 +541,10 @@ def backtest(df_init, strategie, startDate= default_startDate, endDate = default
             nbAction = math.floor(currentWallet/df.loc[idx,"Close"])
             currentWallet = currentWallet - nbAction* df.loc[idx,"Close"]
 
-            myrow = {'Date': idx,'position': "ACHAT",'Prix': df.loc[idx,"Close"]}
+            myrow = pd.DataFrame(
+                [{'Date': idx,'position': "ACHAT",'Prix': df.loc[idx,"Close"]}])
 
-            dt = dt.append(myrow,ignore_index=True)
+            dt = pd.concat([dt,myrow],ignore_index=True)
 
             #mise a jour du status
             currentStatus = status.HOLD
@@ -378,8 +558,10 @@ def backtest(df_init, strategie, startDate= default_startDate, endDate = default
             nbAction = 0
             
 
-            myrow = {'Date': idx,'position': "VENTE",'Prix': df.loc[idx,"Close"]}
-            dt = dt.append(myrow,ignore_index=True)
+            myrow = pd.DataFrame(
+                [{'Date': idx,'position': "VENTE",'Prix': df.loc[idx,"Close"]}])
+        
+            dt = pd.concat([dt,myrow],ignore_index=True)
 
 
         else:
